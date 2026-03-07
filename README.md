@@ -209,3 +209,16 @@ PostgreSQL takes ~15 seconds to initialize on first run. The `moodle-php` contai
 
 **Cron not running**
 Check the `moodle-cron` container logs in Coolify. If it exited, the DB may not have been ready when it started. Restart the `moodle-cron` service.
+
+**Change URL Address**
+in Coolify UI — no redeploy needed. Here's what to do:
+
+1. In Coolify, go to your deployment → Domains section → update the domain
+2. Go to Environment Variables → update MOODLE_URL to the new URL (must match exactly, with https://)
+3. Click Restart (not redeploy — just restart the containers)
+
+Then in the moodle-php terminal, run this one command to update the URL inside Moodle's database:
+
+```bash
+php admin/cli/cfg.php --name=wwwroot --set=https://yournewdomain.com
+```
