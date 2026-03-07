@@ -34,7 +34,8 @@ $CFG->directorypermissions = 0755;
 // Must be set so Moodle generates correct https:// URLs
 // ─────────────────────────────────────────────
 $CFG->sslproxy     = true;
-$CFG->reverseproxy = true;
+// Disbbale reverseprroxy bacause already handled by coolify traefik.
+// $CFG->reverseproxy = true;
 
 // Trust forwarded headers from the nginx container only
 $CFG->reverseproxyignore = false;
