@@ -102,6 +102,12 @@ php admin/cli/install_database.php \
   --shortname="Moodle"
 ```
 
+if multiline command file fail (like showing > when you enter, use one lone command below)
+
+```bash
+php admin/cli/install_database.php --lang=en --adminuser=admin --adminpass='YourAdminPassword123!' --adminemail=admin@yourdomain.com --agree-license --fullname="Your School Moodle" --shortname="Moodle"
+```
+
 > **Password requirements:** must contain uppercase, lowercase, number, and special character.
 
 4. Wait for the `Success` message (usually 1–2 minutes)
