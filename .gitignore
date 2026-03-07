@@ -1,0 +1,40 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Moodle data directories
+moodledata/
+moodle_data/
+moodledata_backup/
+
+# Docker volumes / runtime data
+data/
+volumes/
+mysql_data/
+postgres_data/
+mariadb_data/
+
+# Logs
+*.log
+logs/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (if any tooling)
+node_modules/
+
+# Compiled / cache
+*.pyc
+__pycache__/
