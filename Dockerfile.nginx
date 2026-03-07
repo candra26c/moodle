@@ -1,0 +1,8 @@
+FROM nginx:alpine
+
+# Bake nginx config directly into the image.
+# This avoids Coolify's bind-mount directory/file conflict
+# that occurs when mounting nginx.conf from host path.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
