@@ -1,9 +1,7 @@
 <?php  // Moodle configuration file — injected by Docker build, values from env
-
 unset($CFG);
 global $CFG;
 $CFG = new stdClass();
-
 // ─────────────────────────────────────────────
 // Database (PostgreSQL)
 // ─────────────────────────────────────────────
@@ -19,27 +17,28 @@ $CFG->dboptions = [
     'dbport'    => '',
     'dbsocket'  => '',
 ];
-
 // ─────────────────────────────────────────────
 // Site URL & data paths
 // Moodle 5.1+: web root must point to public/ subdir
+// Switches wwwroot based on incoming hostname:
+// - local domain (ujian.local) → MOODLE_LOCAL_URL
+// - public domain → MOODLE_URL
 // ─────────────────────────────────────────────
-$CFG->wwwroot  = rtrim(getenv('MOODLE_URL'), '/');
+$CFG->wwwroot = isset($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_HOST'] === 'ujian.local'
+    ? rtrim(getenv('MOODLE_LOCAL_URL'), '/')
+    : rtrim(getenv('MOODLE_URL'), '/');
 $CFG->dataroot = '/var/www/moodledata';
 $CFG->admin    = 'admin';
 $CFG->directorypermissions = 0755;
-
 // ─────────────────────────────────────────────
 // Reverse proxy (Coolify → Traefik → nginx → PHP-FPM)
 // Must be set so Moodle generates correct https:// URLs
 // ─────────────────────────────────────────────
 $CFG->sslproxy     = true;
-// Disbbale reverseprroxy bacause already handled by coolify traefik.
+// Disable reverseproxy because already handled by coolify traefik.
 // $CFG->reverseproxy = true;
-
 // Trust forwarded headers from the nginx container only
 $CFG->reverseproxyignore = false;
-
 // ─────────────────────────────────────────────
 // Redis session handler
 // Critical for high-concurrency exam scenarios
@@ -51,13 +50,11 @@ $CFG->session_redis_database        = 0;
 $CFG->session_redis_prefix          = 'mdl_sess_';
 $CFG->session_redis_acquire_lock_timeout = 120;
 $CFG->session_redis_lock_expire     = 7200;
-
 // ─────────────────────────────────────────────
 // Performance
 // ─────────────────────────────────────────────
 $CFG->cachejs      = true;
 $CFG->langstringcache = true;
-
 // ─────────────────────────────────────────────
 // Bootstrap
 // ─────────────────────────────────────────────
