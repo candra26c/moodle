@@ -63,15 +63,28 @@ RUN git clone \
 
 # ─────────────────────────────────────────────
 # 6. Inject env-driven config.php
+#    Stored at /etc/moodle/config.php (image layer)
+#    so the entrypoint can always copy it into the
+#    moodle_app volume, overriding any stale version.
 # ─────────────────────────────────────────────
+COPY config.php /etc/moodle/config.php
 COPY config.php /var/www/moodle/config.php
-RUN chown www-data:www-data /var/www/moodle/config.php
+RUN chown www-data:www-data /etc/moodle/config.php /var/www/moodle/config.php
 
 # ─────────────────────────────────────────────
 # 7. Cron entrypoint
 # ─────────────────────────────────────────────
 COPY cron/moodle-cron.sh /usr/local/bin/moodle-cron.sh
 RUN chmod +x /usr/local/bin/moodle-cron.sh
+
+# ─────────────────────────────────────────────
+# 8. Entrypoint — always syncs config.php from
+#    the image into the shared moodle_app volume.
+#    This ensures redeploys always apply the latest
+#    config.php, even if the volume already exists.
+# ─────────────────────────────────────────────
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Moodle dataroot — not web-accessible
 RUN mkdir -p /var/www/moodledata \
@@ -80,3 +93,6 @@ RUN mkdir -p /var/www/moodledata \
 WORKDIR /var/www/moodle
 
 EXPOSE 9000
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["php-fpm"]

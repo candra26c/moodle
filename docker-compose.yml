@@ -37,6 +37,8 @@ services:
       - moodledata:/var/www/moodledata          # persistent uploads/sessions
     environment:
       - MOODLE_URL=${MOODLE_URL}
+      - MOODLE_LOCAL_URL=${MOODLE_LOCAL_URL:-}
+      - MOODLE_LOCAL_HOST=${MOODLE_LOCAL_HOST:-}
       - MOODLE_DB_HOST=moodle-db
       - MOODLE_DB_NAME=${MOODLE_DB_NAME:-moodle}
       - MOODLE_DB_USER=${MOODLE_DB_USER:-moodle}
@@ -66,6 +68,8 @@ services:
       - moodledata:/var/www/moodledata
     environment:
       - MOODLE_URL=${MOODLE_URL}
+      - MOODLE_LOCAL_URL=${MOODLE_LOCAL_URL:-}
+      - MOODLE_LOCAL_HOST=${MOODLE_LOCAL_HOST:-}
       - MOODLE_DB_HOST=moodle-db
       - MOODLE_DB_NAME=${MOODLE_DB_NAME:-moodle}
       - MOODLE_DB_USER=${MOODLE_DB_USER:-moodle}
