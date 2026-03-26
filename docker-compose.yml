@@ -10,7 +10,7 @@ services:
       dockerfile: Dockerfile.nginx
     depends_on:
       moodle-php:
-        condition: service_healthy              # wait until PHP-FPM passes its healthcheck
+        condition: service_started             # nginx retries PHP-FPM until it's ready (see fastcgi_next_upstream in nginx.conf)
     volumes:
       - moodle_app:/var/www/moodle:ro          # shared read-only — serve static files
       - moodledata:/var/www/moodledata:ro       # needed for file download serving
