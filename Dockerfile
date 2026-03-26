@@ -1,10 +1,10 @@
 # ─────────────────────────────────────────────
 # Base image has all PHP extensions pre-compiled.
-# Build it once with: docker build -f Dockerfile.base -t smamseven/moodle-php-base:8.3 .
-# Push once with:     docker push smamseven/moodle-php-base:8.3
+# Build it once with: docker build -f Dockerfile.base -t candra003/moodle-php-base:8.3 .
+# Push once with:     docker push candra003/moodle-php-base:8.3
 # Subsequent deploys via Coolify skip compilation (~10s instead of ~5min).
 # ─────────────────────────────────────────────
-FROM smamseven/moodle-php-base:8.3
+FROM candra003/moodle-php-base:8.3
 
 # ─────────────────────────────────────────────
 # 1. Clone Moodle v5.1.3 — Moodle 5.1+ uses a
