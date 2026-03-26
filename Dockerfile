@@ -1,8 +1,9 @@
 # ─────────────────────────────────────────────
 # Base image has all PHP extensions pre-compiled.
-# Build it once with: docker build -f Dockerfile.base -t candra003/moodle-php-base:8.3 .
-# Push once with:     docker push candra003/moodle-php-base:8.3
-# Subsequent deploys via Coolify skip compilation (~10s instead of ~5min).
+# Build it once with: docker build -f Dockerfile.base -t YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3 .
+# Push once with:     docker push YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3
+# Then replace the FROM line below with your image name.
+# Subsequent deploys via Coolify skip compilation (~30s instead of ~5min).
 # ─────────────────────────────────────────────
 FROM candra003/moodle-php-base:8.3
 

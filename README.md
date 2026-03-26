@@ -1,8 +1,8 @@
 # Moodle 5.1 — Docker Compose for Coolify
 
-Production-ready Moodle 5.1.3 deployment using Docker Compose, designed to run on [Coolify](https://coolify.io).
+Production-ready Moodle 5.1.3 deployment using Docker Compose, designed to run on [Coolify](https://coolify.io) with Traefik SSL termination.
 
-Moodle core is **not committed to this repo** — it is pulled directly from the official Moodle Git repository at build time, following the [Moodle Git for Administrators](https://docs.moodle.org/501/en/Git_for_Administrators) guide.
+Moodle core is **not committed to this repo** — it is pulled directly from the official Moodle GitHub mirror at build time, following the [Moodle Git for Administrators](https://docs.moodle.org/501/en/Git_for_Administrators) guide.
 
 ---
 
@@ -35,16 +35,52 @@ moodle-php (PHP 8.3-FPM) — Moodle application
 
 ```
 moodle/
-├── Dockerfile              # Builds PHP-FPM image, clones Moodle v5.1.3
+├── Dockerfile              # PHP-FPM image — inherits pre-built base, clones Moodle v5.1.3
+├── Dockerfile.base         # Base image — compiles all PHP extensions (build once, reuse forever)
+├── Dockerfile.nginx        # Nginx image — bakes nginx.conf into the image
 ├── docker-compose.yml      # All services: nginx, php, postgres, redis, cron
 ├── config.php              # Moodle config — reads all values from env vars
 ├── nginx.conf              # Nginx config — serves Moodle 5.1 public/ subdir
+├── docker-entrypoint.sh    # Entrypoint — fixes permissions and syncs config on startup
 ├── cron/
 │   └── moodle-cron.sh      # Runs php admin/cli/cron.php every 60 seconds
+├── docs/
+│   └── dual-access-setup.md  # Optional: LAN offline fallback via Pi-hole + BIND9
 ├── .env.example            # Template for required environment variables
 ├── .gitignore
 └── README.md
 ```
+
+---
+
+## Pre-built Base Image (Required)
+
+The `Dockerfile` uses a pre-built base image that contains all PHP extensions
+(`intl`, `gd`, `pgsql`, `redis`, etc.). This means Coolify deployments complete
+in ~30 seconds instead of 5+ minutes (no extension compilation on every deploy).
+
+**You must build and push this base image once before deploying:**
+
+```bash
+# Clone this repo locally (or run on your server)
+git clone https://github.com/YOUR_USERNAME/moodle.git
+cd moodle
+
+# Build the base image (takes 3–5 min, one-time only)
+docker build -f Dockerfile.base -t YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3 .
+
+# Push to Docker Hub
+docker login
+docker push YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3
+```
+
+Then update line 7 of `Dockerfile` to use your image:
+```dockerfile
+FROM YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3
+```
+
+> **Tip:** You only need to rebuild the base image if you change PHP extensions.
+> Normal code changes and Moodle upgrades only use the fast `Dockerfile`.
 
 ---
 
@@ -54,21 +90,23 @@ moodle/
 
 1. Open Coolify → your **Project** → **+ New Resource**
 2. Select **Git Repository (Public or Private)**
-3. Paste your repo URL: `https://github.com/candra26c/moodle.git`
+3. Paste your repo URL
 4. Set **Branch** to `main`
 5. Set **Build Pack** to **Docker Compose**
 6. Set **Docker Compose Location** to `/docker-compose.yml`
 
 ### Step 2 — Set Environment Variables
 
-Go to the **Environment Variables** tab and add the following. Do **not** use the `.env.example` file directly — enter values in Coolify's UI so they stay secret.
+Go to the **Environment Variables** tab and add the following. Do **not** commit real values — enter them in Coolify's UI.
 
 | Variable | Example Value | Notes |
 |---|---|---|
-| `MOODLE_URL` | `https://moodle.yourdomain.com` | Must match the domain you assign in Coolify. Include `https://`. |
+| `MOODLE_URL` | `https://moodle.yourdomain.com` | Must match your Coolify domain. Include `https://`. |
 | `MOODLE_DB_PASSWORD` | `SuperSecurePassword123!` | Use a strong password. |
 | `MOODLE_DB_NAME` | `moodle` | Can leave as default |
 | `MOODLE_DB_USER` | `moodle` | Can leave as default |
+| `MOODLE_LOCAL_URL` | `https://moodle.yourdomain.com` | Optional — for LAN offline access. See `docs/dual-access-setup.md`. |
+| `MOODLE_LOCAL_HOST` | `moodle.yourdomain.com` | Optional — hostname only, no protocol. |
 
 ### Step 3 — Assign Domain
 
@@ -79,30 +117,17 @@ Go to the **Environment Variables** tab and add the following. Do **not** use th
 ### Step 4 — Deploy
 
 Click **Deploy**. Coolify will:
-1. Build the PHP-FPM image (this takes 3–5 minutes — it clones Moodle v5.1.3 from git.moodle.org)
-2. Start all services: nginx, php-fpm, postgres, redis, cron
-3. Assign your domain and provision the SSL certificate
+1. Pull the pre-built PHP base image (~5 seconds)
+2. Clone Moodle v5.1.3 + copy configs (~30 seconds)
+3. Start all services: nginx, php-fpm, postgres, redis, cron
+4. Assign your domain and provision the SSL certificate
 
 ### Step 5 — Initialize the Moodle Database
 
 After the first deploy, the database is empty. You must run the installer once.
 
-1. In Coolify, click on the **moodle-php** service
-2. Go to the **Terminal** tab (or **Exec** tab)
-3. Run:
-
-```bash
-php admin/cli/install_database.php \
-  --lang=en \
-  --adminuser=admin \
-  --adminpass='YourAdminPassword123!' \
-  --adminemail=admin@yourdomain.com \
-  --agree-license \
-  --fullname="Your School Moodle" \
-  --shortname="Moodle"
-```
-
-if multiline command file fail (like showing > when you enter, use one lone command below)
+1. In Coolify, click on the **moodle-php** service → **Terminal** tab
+2. Run:
 
 ```bash
 php admin/cli/install_database.php --lang=en --adminuser=admin --adminpass='YourAdminPassword123!' --adminemail=admin@yourdomain.com --agree-license --fullname="Your School Moodle" --shortname="Moodle"
@@ -110,8 +135,8 @@ php admin/cli/install_database.php --lang=en --adminuser=admin --adminpass='Your
 
 > **Password requirements:** must contain uppercase, lowercase, number, and special character.
 
-4. Wait for the `Success` message (usually 1–2 minutes)
-5. Visit your domain — Moodle should be live
+3. Wait for the `Success` message (usually 1–2 minutes)
+4. Visit your domain — Moodle should be live
 
 ---
 
@@ -138,22 +163,18 @@ php admin/cli/install_database.php --lang=en --adminuser=admin --adminpass='Your
 
 Moodle is pinned to a specific Git tag in the `Dockerfile`. To upgrade:
 
-1. Edit `Dockerfile` — change the tag:
+1. Edit `Dockerfile` — change the branch tag:
    ```dockerfile
-   # Before
-   RUN git clone --depth 1 --branch v5.1.3 https://github.com/moodle/moodle.git ...
-   
-   # After
-   RUN git clone --depth 1 --branch v5.1.4 https://github.com/moodle/moodle.git ...
+   --branch v5.1.4
    ```
 2. Push the change to your Git repo
-3. In Coolify, click **Force Rebuild & Deploy**
+3. In Coolify, click **Redeploy**
 4. Once containers are running, exec into `moodle-php` and run:
    ```bash
    php admin/cli/upgrade.php --non-interactive
    ```
 
-> Always take a **database backup** before upgrading. See backup section below.
+> Always take a **database backup** before upgrading.
 
 ---
 
@@ -161,17 +182,15 @@ Moodle is pinned to a specific Git tag in the `Dockerfile`. To upgrade:
 
 ### Database backup
 
-Exec into `moodle-db` container in Coolify terminal:
+Exec into `moodle-db` in Coolify terminal:
 
 ```bash
 pg_dump -U moodle moodle > /tmp/moodle-backup-$(date +%Y%m%d).sql
 ```
 
-Then copy out with `docker cp` or use Coolify's backup features.
+Then copy out with `docker cp` or use Coolify's S3 backup features.
 
 ### Moodledata backup
-
-The `moodledata` volume contains all user-uploaded files. Back it up via your server's volume snapshot or:
 
 ```bash
 tar -czf moodledata-backup.tar.gz /var/www/moodledata
@@ -181,7 +200,7 @@ tar -czf moodledata-backup.tar.gz /var/www/moodledata
 
 ## Resource Requirements
 
-The `docker-compose.yml` is configured for a server with approximately **16 GB RAM** and **8 vCPUs**. For smaller servers, adjust the `mem_limit` and `cpus` values per service:
+Configured for a server with approximately **16 GB RAM** and **8 vCPUs**. Adjust `mem_limit` and `cpus` in `docker-compose.yml` for your server:
 
 | Service | Default RAM | Default CPU |
 |---|---|---|
@@ -195,8 +214,17 @@ The `docker-compose.yml` is configured for a server with approximately **16 GB R
 
 ## Troubleshooting
 
-**Build fails / git clone times out**
-The Moodle clone from git.moodle.org can be slow. Try rebuilding. Alternatively, change the clone URL in `Dockerfile` to the GitHub mirror: `https://github.com/moodle/moodle.git`
+**Dashboard loads but content never appears (infinite skeleton)**
+Nginx location order bug — the `.js` static rule was intercepting PHP-generated JS URLs (`/lib/javascript.php/...`) and returning 404 before PHP could handle them. This is already fixed in this repo: the PHP location block comes before static asset rules in `nginx.conf`.
+
+**Build times out in Coolify**
+Coolify's default build timeout may be too short for PHP extension compilation. Build the base image separately (`Dockerfile.base`) and push to Docker Hub. Subsequent deploys skip compilation entirely.
+
+**"Invalid permissions detected when trying to create a directory"**
+The `moodledata` Docker volume mounts as root. The entrypoint (`docker-entrypoint.sh`) automatically fixes ownership on startup. If it persists on a running container, run:
+```bash
+docker exec <moodle-php-container> chown -R www-data:www-data /var/www/moodledata
+```
 
 **Moodle shows wrong URL or redirects to http://**
 Ensure `MOODLE_URL` exactly matches the domain assigned in Coolify (with `https://`). The `config.php` sets `$CFG->sslproxy = true` to handle Traefik's SSL termination.
@@ -204,21 +232,21 @@ Ensure `MOODLE_URL` exactly matches the domain assigned in Coolify (with `https:
 **502 Bad Gateway**
 The `moodle-php` container may still be starting. Wait 30–60 seconds and refresh. Check the `moodle-php` container logs in Coolify.
 
-**Database connection refused on first deploy**
-PostgreSQL takes ~15 seconds to initialize on first run. The `moodle-php` container has a health check dependency — it will wait. If it fails, restart the `moodle-php` service from Coolify.
-
 **Cron not running**
-Check the `moodle-cron` container logs in Coolify. If it exited, the DB may not have been ready when it started. Restart the `moodle-cron` service.
+Check the `moodle-cron` container logs in Coolify. If it exited, the DB may not have been ready. Restart the `moodle-cron` service.
 
 **Change URL Address**
-in Coolify UI — no redeploy needed. Here's what to do:
 
-1. In Coolify, go to your deployment → Domains section → update the domain
-2. Go to Environment Variables → update MOODLE_URL to the new URL (must match exactly, with https://)
-3. Click Restart (not redeploy — just restart the containers)
-
-Then in the moodle-php terminal, run this one command to update the URL inside Moodle's database:
-
+1. In Coolify → your deployment → Domains section → update the domain
+2. Environment Variables → update `MOODLE_URL` to the new URL (with `https://`)
+3. Click **Restart** (not redeploy)
+4. In the `moodle-php` terminal, update the database:
 ```bash
 php admin/cli/cfg.php --name=wwwroot --set=https://yournewdomain.com
 ```
+
+---
+
+## Offline LAN Access (Optional)
+
+See [`docs/dual-access-setup.md`](docs/dual-access-setup.md) for a guide on setting up Pi-hole + BIND9 so Moodle remains accessible on your local network when the internet is down.

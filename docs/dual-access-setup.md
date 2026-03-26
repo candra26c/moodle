@@ -2,9 +2,10 @@
 **Internet + Offline LAN fallback via Pi-hole + BIND9**
 
 ## Goal
-`ujian.smamsevensby.com` accessible from:
-- Internet (students/teachers from home)
-- LAN when internet is down (during offline exams)
+
+`moodle.yourdomain.com` accessible from:
+- Internet (students/teachers from home or mobile)
+- LAN when internet is down (during offline exams on-site)
 
 Same domain for both — no separate fake domain needed.
 
@@ -13,11 +14,11 @@ Same domain for both — no separate fake domain needed.
 ## How It Works
 
 ```
-Internet ON:  Client → Cloudflare DNS → public IP → MikroTik → Coolify (172.16.0.53) → Traefik → Moodle
-Internet OFF: Client → Pi-hole (172.16.0.54) → BIND9 → 172.16.0.53 → Traefik → Moodle
+Internet ON:  Client → Public DNS (e.g. Cloudflare) → public IP → router → Coolify (YOUR_SERVER_IP) → Traefik → Moodle
+Internet OFF: Client → Pi-hole (YOUR_PIHOLE_IP) → BIND9 → YOUR_SERVER_IP → Traefik → Moodle
 ```
 
-HTTPS works in both cases — Traefik serves from its cached Let's Encrypt cert (valid 90 days, auto-renews every 60).
+HTTPS works in both cases — Traefik serves from its cached Let's Encrypt cert (valid 90 days, auto-renews every 60 days while internet is available).
 
 ---
 
@@ -27,18 +28,20 @@ Set in Coolify → Moodle app → Environment Variables:
 
 | Variable | Value |
 |---|---|
-| `MOODLE_URL` | `https://ujian.smamsevensby.com` |
-| `MOODLE_LOCAL_URL` | `https://ujian.smamsevensby.com` |
-| `MOODLE_LOCAL_HOST` | `ujian.smamsevensby.com` |
+| `MOODLE_URL` | `https://moodle.yourdomain.com` |
+| `MOODLE_LOCAL_URL` | `https://moodle.yourdomain.com` |
+| `MOODLE_LOCAL_HOST` | `moodle.yourdomain.com` |
 
 `config.php` already has the dual-URL switching logic — no code changes needed.
 
 ---
 
-## Layer 2 — Pi-hole + BIND9 LXC on Proxmox
+## Layer 2 — Pi-hole + BIND9 (DNS server on your LAN)
 
-**LXC specs:** Ubuntu 22.04 · 1 vCPU · 512MB RAM · 4GB disk
-**Static IP:** `172.16.0.54/22` · Gateway: `172.16.0.1`
+Run this on any always-on server on your LAN (LXC, VM, or bare metal).
+
+**Recommended static IP:** assign a fixed LAN IP to this server (e.g. `YOUR_PIHOLE_IP`).
+**All clients must use this IP as their DNS server** — configured via your router/DHCP server.
 
 ### Step 1 — Install BIND9
 
@@ -62,9 +65,9 @@ options {
 
 `/etc/bind/named.conf.local`:
 ```
-zone "smamsevensby.com" {
+zone "yourdomain.com" {
     type master;
-    file "/etc/bind/zones/smamsevensby.com.db";
+    file "/etc/bind/zones/yourdomain.com.db";
 };
 ```
 
@@ -72,28 +75,28 @@ zone "smamsevensby.com" {
 mkdir -p /etc/bind/zones
 ```
 
-`/etc/bind/zones/smamsevensby.com.db`:
+`/etc/bind/zones/yourdomain.com.db`:
 ```
 $TTL 300
-@   IN SOA ns1.smamsevensby.com. admin.smamsevensby.com. (
-        2026032701 ; serial (update on every change: YYYYMMDDNN)
+@   IN SOA ns1.yourdomain.com. admin.yourdomain.com. (
+        2024010101 ; serial (update on every change: YYYYMMDDNN)
         3600       ; refresh
         1800       ; retry
         604800     ; expire
         300 )      ; minimum TTL
 
-@       IN NS  ns1.smamsevensby.com.
-ns1     IN A   172.16.0.54
+@       IN NS  ns1.yourdomain.com.
+ns1     IN A   YOUR_PIHOLE_IP
 
-; All subdomains → Coolify/Traefik LAN IP
-ujian   IN A   172.16.0.53
-skool   IN A   172.16.0.53
-home    IN A   172.16.0.53
-perpus  IN A   172.16.0.53
+; Subdomains → your Coolify/server LAN IP
+moodle  IN A   YOUR_SERVER_IP
 ```
 
+> Add one `A` record per subdomain you want accessible offline.
+> Increment the serial number each time you edit the zone file.
+
 ```bash
-named-checkzone smamsevensby.com /etc/bind/zones/smamsevensby.com.db
+named-checkzone yourdomain.com /etc/bind/zones/yourdomain.com.db
 systemctl restart bind9
 systemctl enable bind9
 ```
@@ -105,7 +108,7 @@ curl -sSL https://install.pi-hole.net | bash
 ```
 
 During setup:
-- Interface: `eth0`
+- Interface: `eth0` (or your LAN interface)
 - Upstream DNS: `Custom` → `127.0.0.1#53` (BIND9 on localhost)
 - Enable web admin interface
 
@@ -115,14 +118,14 @@ Pi-hole admin → **Settings → DNS**:
 - Uncheck all upstream providers
 - Custom upstream 1: `127.0.0.1#53`
 
-This makes Pi-hole ask BIND9 for all DNS. BIND9 answers `smamsevensby.com` from the local zone and forwards everything else to 1.1.1.1.
+Pi-hole asks BIND9 for all DNS. BIND9 answers your domain from the local zone and forwards everything else to 1.1.1.1.
 
 ### Step 5 — Verify
 
 ```bash
-# Test from inside the LXC
-dig ujian.smamsevensby.com @127.0.0.1
-# Should return 172.16.0.53
+# Test from inside the Pi-hole server
+dig moodle.yourdomain.com @127.0.0.1
+# Should return YOUR_SERVER_IP
 
 dig google.com @127.0.0.1
 # Should return real public IP (forwarded to 1.1.1.1)
@@ -130,26 +133,31 @@ dig google.com @127.0.0.1
 
 ---
 
-## Layer 3 — MikroTik DNS Redirect
+## Layer 3 — Router/DHCP DNS Redirect
 
-Redirect all client DNS queries to Pi-hole (overrides MikroTik's built-in DNS).
+Point all client DNS queries to Pi-hole.
 
-**IP → Firewall → NAT** — add 2 rules, Rule 1 must be above Rule 2:
+**Option A — Via DHCP server (recommended):**
+Set the DNS server in your router's DHCP configuration to `YOUR_PIHOLE_IP`.
+All clients that get an IP via DHCP will automatically use Pi-hole.
+
+**Option B — Via MikroTik NAT (forces all DNS through Pi-hole):**
+
+Add 2 rules in **IP → Firewall → NAT** (Rule 1 must be above Rule 2):
 
 | Priority | Chain | Protocol | Dst-port | Src-address | Action | To-address |
 |---|---|---|---|---|---|---|
-| 1 | dstnat | tcp+udp | 53 | `172.16.0.54` | accept | — |
-| 2 | dstnat | tcp+udp | 53 | any | dst-nat | `172.16.0.54` |
+| 1 | dstnat | tcp+udp | 53 | `YOUR_PIHOLE_IP` | accept | — |
+| 2 | dstnat | tcp+udp | 53 | any | dst-nat | `YOUR_PIHOLE_IP` |
 
-Rule 1 exempts Pi-hole itself from being redirected (prevents loop).
-Rule 2 redirects everyone else to Pi-hole.
+Rule 1 exempts Pi-hole itself (prevents loop). Rule 2 redirects everyone else.
 
-MikroTik terminal shortcut:
+MikroTik terminal:
 ```
-/ip firewall nat add chain=dstnat protocol=udp dst-port=53 src-address=172.16.0.54 action=accept place-before=0 comment="Exempt Pi-hole from DNS redirect"
-/ip firewall nat add chain=dstnat protocol=udp dst-port=53 action=dst-nat to-addresses=172.16.0.54 comment="Redirect all DNS to Pi-hole"
-/ip firewall nat add chain=dstnat protocol=tcp dst-port=53 src-address=172.16.0.54 action=accept place-before=0
-/ip firewall nat add chain=dstnat protocol=tcp dst-port=53 action=dst-nat to-addresses=172.16.0.54
+/ip firewall nat add chain=dstnat protocol=udp dst-port=53 src-address=YOUR_PIHOLE_IP action=accept place-before=0 comment="Exempt Pi-hole from DNS redirect"
+/ip firewall nat add chain=dstnat protocol=udp dst-port=53 action=dst-nat to-addresses=YOUR_PIHOLE_IP comment="Redirect all DNS to Pi-hole"
+/ip firewall nat add chain=dstnat protocol=tcp dst-port=53 src-address=YOUR_PIHOLE_IP action=accept place-before=0
+/ip firewall nat add chain=dstnat protocol=tcp dst-port=53 action=dst-nat to-addresses=YOUR_PIHOLE_IP
 ```
 
 ---
@@ -158,27 +166,27 @@ MikroTik terminal shortcut:
 
 | Check | Status |
 |---|---|
-| Pi-hole running | ✓ LAN service, unaffected by internet |
-| BIND9 answers `ujian.smamsevensby.com` | ✓ local zone, no internet needed |
-| Traefik serves HTTPS | ✓ cached cert, no internet needed |
-| Moodle app | ✓ PostgreSQL + Redis all on LAN |
-| External DNS (google.com etc.) | ✗ unavailable (expected) |
+| Pi-hole running | ✓ LAN service, unaffected by internet loss |
+| BIND9 answers `moodle.yourdomain.com` | ✓ local zone, no internet needed |
+| Traefik serves HTTPS | ✓ cert is cached locally, no internet needed |
+| Moodle app + database | ✓ PostgreSQL + Redis are all on LAN |
+| External DNS (google.com etc.) | ✗ unavailable — expected |
 
 ---
 
-## Adding New Subdomains Later
+## Adding More Subdomains Later
 
-1. Add A record to `/etc/bind/zones/smamsevensby.com.db`
-2. Increment the serial number (YYYYMMDDNN format)
+1. Add an `A` record to your zone file
+2. Increment the serial number (YYYYMMDDNN)
 3. `systemctl restart bind9`
 
 ---
 
-## Status
+## Setup Checklist
 
-- [ ] LXC created at 172.16.0.54
-- [ ] BIND9 installed and zone configured
-- [ ] Pi-hole installed and pointing to BIND9
-- [ ] MikroTik NAT rules applied
-- [ ] Moodle env vars confirmed in Coolify
-- [ ] Test: access `ujian.smamsevensby.com` from LAN with internet disconnected
+- [ ] Pi-hole + BIND9 server running with a static LAN IP
+- [ ] BIND9 zone file created for your domain
+- [ ] Pi-hole upstream DNS set to BIND9 (`127.0.0.1#53`)
+- [ ] Router DHCP hands out Pi-hole IP as DNS server (or NAT rule applied)
+- [ ] Moodle env vars confirmed in Coolify (`MOODLE_LOCAL_HOST`, `MOODLE_LOCAL_URL`)
+- [ ] Test: access `moodle.yourdomain.com` from LAN with internet disconnected
