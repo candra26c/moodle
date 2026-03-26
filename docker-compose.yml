@@ -10,7 +10,7 @@ services:
       dockerfile: Dockerfile.nginx
     depends_on:
       moodle-php:
-        condition: service_started
+        condition: service_healthy              # wait until PHP-FPM passes its healthcheck
     volumes:
       - moodle_app:/var/www/moodle:ro          # shared read-only — serve static files
       - moodledata:/var/www/moodledata:ro       # needed for file download serving
@@ -19,6 +19,8 @@ services:
     mem_limit: 512m
     cpus: "1.0"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     logging:
       driver: "json-file"
       options:
@@ -47,6 +49,12 @@ services:
     mem_limit: 8g
     cpus: "4.0"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     logging:
       driver: "json-file"
       options:
@@ -95,7 +103,7 @@ services:
     command: >
       redis-server
       --maxmemory 2gb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy volatile-lru
       --save ""
       --appendonly no
     mem_limit: 2560m

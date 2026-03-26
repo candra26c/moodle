@@ -40,7 +40,7 @@ $CFG->wwwroot = ($_localHost && isset($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_H
 
 $CFG->dataroot = '/var/www/moodledata';
 $CFG->admin    = 'admin';
-$CFG->directorypermissions = 0755;
+$CFG->directorypermissions = 0750;
 
 // ─────────────────────────────────────────────
 // Reverse proxy (Coolify → Traefik → nginx → PHP-FPM)

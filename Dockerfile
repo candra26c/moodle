@@ -94,5 +94,10 @@ WORKDIR /var/www/moodle
 
 EXPOSE 9000
 
+# Reports healthy once PHP-FPM config validates and the master process is up.
+# moodle-web depends_on this being healthy before accepting traffic.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD php-fpm -t 2>&1 | grep -q "test is successful" || exit 1
+
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["php-fpm"]
