@@ -13,10 +13,16 @@ cp /etc/moodle/config.php /var/www/moodle/config.php
 chown www-data:www-data /var/www/moodle/config.php
 echo "[entrypoint] config.php synced."
 
-echo "[entrypoint] Fixing moodledata permissions..."
 mkdir -p /var/www/moodledata
-chown -R www-data:www-data /var/www/moodledata
-chmod -R 0755 /var/www/moodledata
-echo "[entrypoint] moodledata permissions fixed."
+# Only run the expensive recursive chown when the top-level owner is wrong.
+# Avoids slowdowns as moodledata grows with student uploads over time.
+if [ "$(stat -c '%U' /var/www/moodledata)" != "www-data" ]; then
+    echo "[entrypoint] moodledata owner mismatch — fixing permissions..."
+    chown -R www-data:www-data /var/www/moodledata
+    chmod 0755 /var/www/moodledata
+    echo "[entrypoint] moodledata permissions fixed."
+else
+    echo "[entrypoint] moodledata permissions OK."
+fi
 
 exec "$@"
