@@ -1,0 +1,52 @@
+FROM php:8.3-fpm
+
+# ─────────────────────────────────────────────
+# System dependencies required by Moodle 5.1
+# ─────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    libpng-dev libjpeg-dev libpq-dev libxml2-dev \
+    libzip-dev libicu-dev libsodium-dev \
+    zip unzip git curl tzdata rsync cron \
+    && rm -rf /var/lib/apt/lists/*
+
+# ─────────────────────────────────────────────
+# PHP extensions (~3 min to compile — this is the
+# slow step that exceeds Coolify's build timeout.
+# Pre-built into this base image so the main
+# Dockerfile skips compilation entirely.
+# ─────────────────────────────────────────────
+RUN docker-php-ext-configure gd --with-jpeg \
+    && docker-php-ext-install \
+        gd intl pgsql pdo_pgsql zip opcache soap exif sodium pcntl
+
+# Redis extension for session/cache
+RUN pecl install redis && docker-php-ext-enable redis
+
+# ─────────────────────────────────────────────
+# PHP tuning
+# ─────────────────────────────────────────────
+RUN { \
+    echo "memory_limit = 512M"; \
+    echo "max_execution_time = 300"; \
+    echo "max_input_vars = 5000"; \
+    echo "upload_max_filesize = 500M"; \
+    echo "post_max_size = 500M"; \
+    echo "opcache.enable = 1"; \
+    echo "opcache.memory_consumption = 512"; \
+    echo "opcache.max_accelerated_files = 20000"; \
+    echo "opcache.revalidate_freq = 60"; \
+    echo "opcache.interned_strings_buffer = 16"; \
+} > /usr/local/etc/php/conf.d/moodle.ini
+
+# ─────────────────────────────────────────────
+# PHP-FPM pool tuning
+# ─────────────────────────────────────────────
+RUN { \
+    echo "[www]"; \
+    echo "pm = dynamic"; \
+    echo "pm.max_children = 150"; \
+    echo "pm.start_servers = 20"; \
+    echo "pm.min_spare_servers = 10"; \
+    echo "pm.max_spare_servers = 40"; \
+    echo "pm.max_requests = 500"; \
+} > /usr/local/etc/php-fpm.d/zz-moodle.conf
