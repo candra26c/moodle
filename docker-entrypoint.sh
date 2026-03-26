@@ -13,4 +13,10 @@ cp /etc/moodle/config.php /var/www/moodle/config.php
 chown www-data:www-data /var/www/moodle/config.php
 echo "[entrypoint] config.php synced."
 
+echo "[entrypoint] Fixing moodledata permissions..."
+mkdir -p /var/www/moodledata
+chown -R www-data:www-data /var/www/moodledata
+chmod -R 0755 /var/www/moodledata
+echo "[entrypoint] moodledata permissions fixed."
+
 exec "$@"
