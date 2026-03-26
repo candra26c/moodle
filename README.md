@@ -53,20 +53,40 @@ moodle/
 
 ---
 
-## Pre-built Base Image (Required)
+## How This Repo Works
 
-The `Dockerfile` uses a pre-built base image that contains all PHP extensions
-(`intl`, `gd`, `pgsql`, `redis`, etc.). This means Coolify deployments complete
-in ~30 seconds instead of 5+ minutes (no extension compilation on every deploy).
+```
+GitHub repo (this repo)
+   │
+   ├── Dockerfile.base  ──build once──▶  Docker Hub (candra003/moodle-php-base:8.3)
+   │                                          │
+   └── Dockerfile       ──pulls FROM──────────┘
+        + clones Moodle v5.1.3 from GitHub
+        + copies config.php, entrypoint, cron script
+             │
+             ▼
+        Coolify pulls this repo → builds image → deploys all containers
+```
 
-**You must build and push this base image once before deploying:**
+**The base image** (`candra003/moodle-php-base:8.3`) is publicly available on Docker Hub.
+It contains all compiled PHP extensions (`intl`, `gd`, `pgsql`, `sodium`, `redis` via PECL, etc.).
+The `Dockerfile` inherits from it so Coolify builds complete in ~30 seconds instead of 5+ minutes.
+
+### Option A — Use the existing public base image (quickest)
+
+The `Dockerfile` already points to `candra003/moodle-php-base:8.3` which is public.
+You can deploy immediately without building anything extra — just fork, set env vars, deploy.
+
+### Option B — Build your own base image (recommended for long-term ownership)
+
+If you want full control or plan to customise the PHP extensions:
 
 ```bash
-# Clone this repo locally (or run on your server)
+# On your server or locally
 git clone https://github.com/YOUR_USERNAME/moodle.git
 cd moodle
 
-# Build the base image (takes 3–5 min, one-time only)
+# Build (takes 3–5 min, one-time only)
 docker build -f Dockerfile.base -t YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3 .
 
 # Push to Docker Hub
@@ -74,13 +94,13 @@ docker login
 docker push YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3
 ```
 
-Then update line 7 of `Dockerfile` to use your image:
+Then update `Dockerfile` line 7:
 ```dockerfile
 FROM YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3
 ```
 
-> **Tip:** You only need to rebuild the base image if you change PHP extensions.
-> Normal code changes and Moodle upgrades only use the fast `Dockerfile`.
+> You only need to rebuild the base image when changing PHP extensions.
+> All other changes (Moodle version, config, nginx) use the fast `Dockerfile` only.
 
 ---
 
