@@ -31,6 +31,7 @@ RUN git clone \
 #     so PHP never scans the filesystem for classes.
 # ─────────────────────────────────────────────
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && git config --global --add safe.directory /var/www/moodle \
     && composer install --no-dev --classmap-authoritative --working-dir=/var/www/moodle \
     && chown -R www-data:www-data /var/www/moodle/vendor
 
