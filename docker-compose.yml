@@ -37,6 +37,10 @@ services:
     volumes:
       - moodle_app:/var/www/moodle              # shared with nginx and cron
       - moodledata:/var/www/moodledata          # persistent uploads/sessions
+      - type: tmpfs                             # RAM-backed Mustache/template cache
+        target: /var/cache/moodle_localcache    # matches $CFG->localcachedir
+        tmpfs:
+          size: 536870912                       # 512 MB — cleared on container restart
     environment:
       - MOODLE_URL=${MOODLE_URL}
       - MOODLE_LOCAL_URL=${MOODLE_LOCAL_URL:-}
@@ -74,6 +78,10 @@ services:
     volumes:
       - moodle_app:/var/www/moodle
       - moodledata:/var/www/moodledata
+      - type: tmpfs                             # same localcachedir as php — cron generates templates too
+        target: /var/cache/moodle_localcache
+        tmpfs:
+          size: 268435456                       # 256 MB for cron
     environment:
       - MOODLE_URL=${MOODLE_URL}
       - MOODLE_LOCAL_URL=${MOODLE_LOCAL_URL:-}

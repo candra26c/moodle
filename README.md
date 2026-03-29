@@ -28,6 +28,7 @@ moodle-php (PHP 8.3-FPM) — Moodle application
 | `moodle_app` | Moodle PHP codebase (shared between web, php, cron containers) |
 | `moodledata` | User uploads, session files, temp data (persistent) |
 | `moodle_db_data` | PostgreSQL database files (persistent) |
+| tmpfs @ `/var/cache/moodle_localcache` | RAM-backed Mustache/template cache (512 MB, cleared on restart) |
 
 ---
 
@@ -99,7 +100,9 @@ Then update `Dockerfile` line 7:
 FROM YOUR_DOCKERHUB_USERNAME/moodle-php-base:8.3
 ```
 
-> You only need to rebuild the base image when changing PHP extensions.
+> **Rebuild required** after this update — OPcache and JIT settings were added to `Dockerfile.base`. Run the build + push above, then redeploy in Coolify.
+>
+> You only need to rebuild the base image when changing PHP extensions or PHP tuning settings in `Dockerfile.base`.
 > All other changes (Moodle version, config, nginx) use the fast `Dockerfile` only.
 
 ---
@@ -127,6 +130,7 @@ Go to the **Environment Variables** tab and add the following. Do **not** commit
 | `MOODLE_DB_USER` | `moodle` | Can leave as default |
 | `MOODLE_LOCAL_URL` | `https://moodle.yourdomain.com` | Optional — for LAN offline access. See `docs/dual-access-setup.md`. |
 | `MOODLE_LOCAL_HOST` | `moodle.yourdomain.com` | Optional — hostname only, no protocol. |
+| `MOODLE_UPGRADEKEY` | `some-random-secret` | **Recommended** — blocks public access to `/admin/upgrade.php`. Set to any random string. |
 
 ### Step 3 — Assign Domain
 
@@ -161,15 +165,6 @@ php admin/cli/install_database.php --lang=en --adminuser=admin --adminpass='Your
 ---
 
 ## Post-Install Configuration
-
-### Enable Redis Caching (Important for performance)
-
-1. Log in as Admin
-2. Go to **Site administration → Plugins → Caching → Configuration**
-3. Under **Redis**, click **Add instance**:
-   - Server: `moodle-redis:6379`
-   - Prefix: `mdl_`
-4. Assign the Redis instance to **Application**, **Session**, and **Request** stores
 
 ### Configure Quiz for High Concurrency (Exam use)
 
@@ -218,6 +213,33 @@ tar -czf moodledata-backup.tar.gz /var/www/moodledata
 
 ---
 
+## Performance Tuning
+
+The following optimisations are baked in and active by default:
+
+| Layer | Setting | Effect |
+|---|---|---|
+| PHP OPcache | `validate_timestamps=0` | Skips file stat() on every request — Docker code never changes at runtime |
+| PHP OPcache | JIT `tracing` mode, 128 MB buffer | CPU speedup for Moodle's hot PHP execution paths |
+| PHP OPcache | `interned_strings_buffer=32` | Reduces memory allocation for repeated string literals |
+| PHP | `realpath_cache_size=4096K`, TTL 600s | Caches resolved file paths — Moodle resolves thousands per request |
+| PHP-FPM | `pm.process_idle_timeout=10s` | Frees idle workers to reclaim RAM between request bursts |
+| Moodle | `localcachedir` on tmpfs (512 MB RAM) | Mustache/template cache served from RAM instead of disk |
+| Moodle | `filelifetime=86400` | Browsers cache static files for 1 day — reduces repeat page-load time |
+| Moodle | `X-Accel-Redirect` | nginx serves file downloads directly — PHP-FPM is freed immediately |
+| nginx | `open_file_cache max=2000` | Avoids repeated stat()/open() syscalls for static assets |
+
+### Enable Redis Caching (Important for performance)
+
+1. Log in as Admin
+2. Go to **Site administration → Plugins → Caching → Configuration**
+3. Under **Redis**, click **Add instance**:
+   - Server: `moodle-redis:6379`
+   - Prefix: `mdl_`
+4. Assign the Redis instance to **Application**, **Session**, and **Request** stores
+
+---
+
 ## Resource Requirements
 
 Configured for a server with approximately **16 GB RAM** and **8 vCPUs**. Adjust `mem_limit` and `cpus` in `docker-compose.yml` for your server:
@@ -240,10 +262,16 @@ Nginx location order bug — the `.js` static rule was intercepting PHP-generate
 **Build times out in Coolify**
 Coolify's default build timeout may be too short for PHP extension compilation. Build the base image separately (`Dockerfile.base`) and push to Docker Hub. Subsequent deploys skip compilation entirely.
 
-**"Invalid permissions detected when trying to create a directory"**
-The `moodledata` Docker volume mounts as root. The entrypoint (`docker-entrypoint.sh`) automatically fixes ownership on startup. If it persists on a running container, run:
+**"Invalid permissions detected when trying to create a directory" / "Failed opening required localcache/mustache/..."**
+Fixed in this release. Root causes were:
+1. `directorypermissions = 0750` — too restrictive for CLI cron. Now `02777` (Moodle official default with setgid bit).
+2. `localcachedir` was not set — Moodle tried to auto-create it in a non-writable path.
+3. Subdirectories (`temp/`, `cache/`, `localcache/`, `sessions/`, `backuptemp/`) were not pre-created.
+
+The `docker-entrypoint.sh` now pre-creates all required subdirectories on every startup. If the error persists on an already-running container before redeploy:
 ```bash
 docker exec <moodle-php-container> chown -R www-data:www-data /var/www/moodledata
+docker exec <moodle-php-container> chmod -R 02777 /var/www/moodledata
 ```
 
 **Moodle shows wrong URL or redirects to http://**

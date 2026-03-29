@@ -38,9 +38,30 @@ $CFG->wwwroot = ($_localHost && isset($_SERVER['HTTP_HOST']) && $_SERVER['HTTP_H
     ? rtrim($_localUrl, '/')
     : rtrim(getenv('MOODLE_URL'), '/');
 
-$CFG->dataroot = '/var/www/moodledata';
-$CFG->admin    = 'admin';
-$CFG->directorypermissions = 0750;
+$CFG->dataroot  = '/var/www/moodledata';
+$CFG->admin     = 'admin';
+
+// ─────────────────────────────────────────────
+// Directory permissions
+// 02777 = setgid bit + rwxrwxrwx — Moodle official default.
+// The setgid bit ensures new files inherit the group, so
+// CLI scripts (cron) and web (www-data) can both read/write.
+// 0750 is too restrictive and causes "Invalid permissions" errors.
+// ─────────────────────────────────────────────
+$CFG->directorypermissions = 02777;
+
+// ─────────────────────────────────────────────
+// Additional data paths
+// Explicit paths prevent Moodle from auto-detecting wrong dirs.
+// localcachedir — Mustache/template cache (per-node, RAM-backed tmpfs).
+// tempdir       — short-lived temp files.
+// cachedir      — application-level MUC disk cache.
+// localrequestdir — per-request temp files, uses OS temp.
+// ─────────────────────────────────────────────
+$CFG->localcachedir   = '/var/cache/moodle_localcache';
+$CFG->tempdir         = '/var/www/moodledata/temp';
+$CFG->cachedir        = '/var/www/moodledata/cache';
+$CFG->localrequestdir = '/tmp/moodlerequest';
 
 // ─────────────────────────────────────────────
 // Reverse proxy (Coolify → Traefik → nginx → PHP-FPM)
@@ -49,6 +70,33 @@ $CFG->directorypermissions = 0750;
 // ─────────────────────────────────────────────
 $CFG->sslproxy           = true;
 $CFG->reverseproxyignore = false;
+
+// ─────────────────────────────────────────────
+// X-Sendfile / X-Accel-Redirect
+// nginx serves moodledata files directly (pluginfile.php, etc.)
+// without PHP holding a connection open for the entire download.
+// xsendfilepath must match the nginx internal location alias.
+// ─────────────────────────────────────────────
+$CFG->xsendfile     = 'X-Accel-Redirect';
+$CFG->xsendfilepath = '/moodledata_internal';
+
+// ─────────────────────────────────────────────
+// Security
+// upgradekey: protects /admin/upgrade.php from public access.
+// Set MOODLE_UPGRADEKEY env var in Coolify — leave blank to skip.
+// cookiehttponly: prevents JS from reading session cookies.
+// cookiesecure: only send session cookie over HTTPS.
+// ─────────────────────────────────────────────
+$CFG->upgradekey     = getenv('MOODLE_UPGRADEKEY') ?: '';
+$CFG->cookiehttponly = true;
+$CFG->cookiesecure   = true;
+
+// ─────────────────────────────────────────────
+// Static file caching
+// filelifetime: how long browsers cache static files (seconds).
+// 86400 = 1 day. Reduces repeat page-load time significantly.
+// ─────────────────────────────────────────────
+$CFG->filelifetime = 86400;
 
 // ─────────────────────────────────────────────
 // Redis session handler

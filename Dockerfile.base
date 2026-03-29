@@ -31,11 +31,25 @@ RUN { \
     echo "max_input_vars = 5000"; \
     echo "upload_max_filesize = 500M"; \
     echo "post_max_size = 500M"; \
+    echo ""; \
+    echo "; OPcache — code never changes at runtime in Docker,"; \
+    echo "; so disable timestamp checks for maximum performance."; \
     echo "opcache.enable = 1"; \
+    echo "opcache.enable_cli = 1"; \
     echo "opcache.memory_consumption = 512"; \
     echo "opcache.max_accelerated_files = 20000"; \
-    echo "opcache.revalidate_freq = 60"; \
-    echo "opcache.interned_strings_buffer = 16"; \
+    echo "opcache.validate_timestamps = 0"; \
+    echo "opcache.revalidate_freq = 0"; \
+    echo "opcache.interned_strings_buffer = 32"; \
+    echo ""; \
+    echo "; PHP 8.x JIT — significant CPU speedup for Moodle's hot PHP paths."; \
+    echo "opcache.jit = tracing"; \
+    echo "opcache.jit_buffer_size = 128M"; \
+    echo ""; \
+    echo "; realpath cache — Moodle resolves thousands of files per request."; \
+    echo "; Caching resolved paths avoids repeated filesystem stat() calls."; \
+    echo "realpath_cache_size = 4096K"; \
+    echo "realpath_cache_ttl = 600"; \
 } > /usr/local/etc/php/conf.d/moodle.ini
 
 # ─────────────────────────────────────────────
@@ -49,4 +63,8 @@ RUN { \
     echo "pm.min_spare_servers = 10"; \
     echo "pm.max_spare_servers = 40"; \
     echo "pm.max_requests = 500"; \
+    echo "; Idle workers are freed after 10s to reclaim memory"; \
+    echo "pm.process_idle_timeout = 10s"; \
+    echo "; Hard limit per request — matches PHP max_execution_time"; \
+    echo "request_terminate_timeout = 300"; \
 } > /usr/local/etc/php-fpm.d/zz-moodle.conf
