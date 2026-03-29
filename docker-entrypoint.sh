@@ -16,8 +16,10 @@ echo "[entrypoint] config.php synced."
 # ─────────────────────────────────────────────
 # Ensure moodledata and all required subdirectories exist
 # with correct ownership and permissions (02777 = setgid + rwxrwxrwx).
-# Moodle expects these to pre-exist; missing dirs cause permission errors.
+# Always apply — do NOT skip existing dirs. Volumes from previous
+# deployments retain old root ownership which causes permission errors.
 # ─────────────────────────────────────────────
+echo "[entrypoint] Fixing moodledata directory permissions..."
 for dir in \
     /var/www/moodledata \
     /var/www/moodledata/temp \
@@ -27,34 +29,19 @@ for dir in \
     /var/www/moodledata/backuptemp \
     /tmp/moodlerequest
 do
-    if [ ! -d "$dir" ]; then
-        echo "[entrypoint] Creating $dir..."
-        mkdir -p "$dir"
-        chown www-data:www-data "$dir"
-        chmod 02777 "$dir"
-    fi
+    mkdir -p "$dir"
+    chown www-data:www-data "$dir"
+    chmod 02777 "$dir"
 done
+echo "[entrypoint] moodledata permissions OK."
 
 # ─────────────────────────────────────────────
 # localcachedir lives on tmpfs (/var/cache/moodle_localcache).
-# tmpfs is mounted fresh each container start, so always recreate.
+# tmpfs is mounted fresh each container start — always recreate.
 # ─────────────────────────────────────────────
 mkdir -p /var/cache/moodle_localcache
 chown www-data:www-data /var/cache/moodle_localcache
 chmod 02777 /var/cache/moodle_localcache
 echo "[entrypoint] localcachedir ready."
-
-# ─────────────────────────────────────────────
-# Only run expensive recursive chown on moodledata when owner is wrong.
-# Avoids slowdowns as moodledata grows with student uploads over time.
-# ─────────────────────────────────────────────
-if [ "$(stat -c '%U' /var/www/moodledata)" != "www-data" ]; then
-    echo "[entrypoint] moodledata owner mismatch — fixing permissions..."
-    chown -R www-data:www-data /var/www/moodledata
-    chmod 02777 /var/www/moodledata
-    echo "[entrypoint] moodledata permissions fixed."
-else
-    echo "[entrypoint] moodledata permissions OK."
-fi
 
 exec "$@"
