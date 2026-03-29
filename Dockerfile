@@ -16,8 +16,11 @@ FROM candra003/moodle-php-base:8.3
 RUN git clone \
     --depth 1 \
     --branch v5.1.3 \
+    --filter=blob:none \
+    --no-checkout \
     https://github.com/moodle/moodle.git \
     /var/www/moodle \
+    && git -C /var/www/moodle checkout HEAD \
     && chown -R www-data:www-data /var/www/moodle
 
 # ─────────────────────────────────────────────
