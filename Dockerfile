@@ -24,6 +24,17 @@ RUN git clone \
     && chown -R www-data:www-data /var/www/moodle
 
 # ─────────────────────────────────────────────
+# 1b. Install Composer dependencies
+#     Moodle 5.x requires vendor/ directory.
+#     --no-dev skips test packages.
+#     --classmap-authoritative builds a fast class map
+#     so PHP never scans the filesystem for classes.
+# ─────────────────────────────────────────────
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && composer install --no-dev --classmap-authoritative --working-dir=/var/www/moodle \
+    && chown -R www-data:www-data /var/www/moodle/vendor
+
+# ─────────────────────────────────────────────
 # 2. Inject env-driven config.php
 #    Stored at /etc/moodle/config.php (image layer)
 #    so the entrypoint can always copy it into the
